@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESnext", // O CommonJS según tu setup
+    "moduleResolution": "bundler",
+    "esModuleInterop": true, // ESTE ES EL MÁS IMPORTANTE
+    "skipLibCheck": true, // Ignora errores dentro de node_modules
+    "strict": true
+  }
+}

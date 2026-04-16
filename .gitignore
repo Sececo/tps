@@ -1,0 +1,26 @@
+# Configuración y secretos
+.env
+
+# Logs y archivos temporales
+*.log
+*.txt
+*.csv
+
+# Dependencias y builds
+node_modules/
+dist/
+build/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+
+# Tests y coverage
+coverage/
+
+# Caches
+.pnpm-store/
+.turbo/
