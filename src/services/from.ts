@@ -463,86 +463,143 @@ const SUFIJOS_US = [
   'STEIN',
 ];
 
+const PESOS_TRIGRAMAS: Record<string, { h: number; u: number }> = {
+  // --- PATRONES HISPANOS (Estructuras de Sílabas) ---
+  ' AR': { h: 3, u: 0 },
+  ' AN': { h: 2, u: 0 }, // Inicios comunes (Arturo, Andres)
+  GUE: { h: 8, u: 0 },
+  GUI: { h: 8, u: 0 }, // Rodriguez, Guillen
+  LLA: { h: 6, u: 0 },
+  LLO: { h: 6, u: 0 }, // Jaramillo, Padilla
+  RRA: { h: 5, u: 0 },
+  RRE: { h: 5, u: 0 }, // Gutierrez, Aguirre
+  QUI: { h: 7, u: 0 },
+  QUE: { h: 4, u: 1 }, // Quintero, Enrique
+  CIO: { h: 5, u: 0 },
+  CIA: { h: 4, u: 1 }, // Mauricio, Garcia
+  DRE: { h: 4, u: 0 },
+  NDA: { h: 3, u: 0 }, // Alejandro, Miranda
+  'EZ ': { h: 10, u: 0 },
+  'AS ': { h: 4, u: 2 }, // Finales fuertes (Perez, Rojas)
+  INO: { h: 4, u: 0 },
+  ITO: { h: 4, u: 0 }, // Benitez, Esposito (influencia italo/hispana)
+
+  // --- PATRONES ESTADOUNIDENSES / ANGLO (Estructuras Fonéticas) ---
+  GHT: { h: 0, u: 10 },
+  'GH ': { h: 0, u: 6 }, // Wright, Hugh
+  SON: { h: 1, u: 9 },
+  SEN: { h: 1, u: 7 }, // Johnson, Jensen
+  'CK ': { h: 0, u: 8 },
+  CKA: { h: 0, u: 5 }, // Black, Packard
+  'TH ': { h: 0, u: 9 },
+  THA: { h: 0, u: 6 }, // Smith, Jonathan
+  'SH ': { h: 0, u: 7 },
+  SHA: { h: 0, u: 5 }, // Bush, Marshall
+  WRI: { h: 0, u: 8 },
+  WRE: { h: 0, u: 6 }, // Wright, Wren
+  SCH: { h: 0, u: 9 },
+  DTH: { h: 0, u: 8 }, // Schmidt, Meredith
+  'OO ': { h: 0, u: 6 },
+  OOD: { h: 0, u: 7 }, // Wood, Good
+  RLY: { h: 0, u: 7 },
+  LEY: { h: 1, u: 6 }, // Early, Stanley
+  'ST ': { h: 1, u: 5 },
+  RDS: { h: 0, u: 7 }, // West, Edwards
+};
+// para ver en donde se clasifico cada nombre, se pueden imprimir las variables regex, diccionary y ngrama al final del proceso para tener una idea de cuántos nombres fueron clasificados por cada capa. Esto puede ayudar a entender la efectividad de cada método y ajustar los pesos o patrones si es necesario.
+let regex = 0;
+let diccionary = 0;
+let ngrama = 0;
+let tildesONies = 0; // Contador de nombres con tildes o eñes (solo para estadísticas, no afecta la clasificación)
+let nulosOVacios = 0; // Contador de nombres nulos o vacíos (solo para estadísticas, no afecta la clasificación)
 /**
  * Lógica de clasificación por pesos (INTACTO)
  */
 const clasificarNombre = (nombreCompleto: string | undefined): string => {
-  if (!nombreCompleto) return '';
+  if (!nombreCompleto) {
+    nulosOVacios++;
+    return 'Indeterminado';
+  }
 
   const normalizado = nombreCompleto.toUpperCase().trim();
+  const conEspacios = ` ${normalizado} `;
   let scoreHispano = 0;
   let scoreUS = 0;
 
-  // 1. Detección de caracteres latinos
-  // A. Tildes y Ñ (Prueba irrefutable)
-  if (/[ñáéíóúü]/i.test(normalizado)) scoreHispano += 20;
+  // --- CAPA 1: REGEX (Certezas Lingüísticas) ---
+  // A. Caracteres irrefutables
+  if (/[ÑÁÉÍÓÚÜ]/.test(normalizado)) {
+    tildesONies++;
+    scoreHispano += 25;
+  }
 
-  // B. Dígrafos iniciales y terminaciones comunes
-  // 'Ll' al inicio o apellidos que terminan en 'ez' (Rodríguez, Pérez)
-  if (/^Ll|ez\b|ndro\b|ocio\b/i.test(normalizado)) scoreHispano += 15;
+  // B. Partículas y Prefijos de origen (Certeza alta)
+  if (/\b(DE|DEL|LA|Y)\b/.test(normalizado)) scoreHispano += 15;
+  if (/\b(MC|O'|FITZ|VON)\b/.test(normalizado)) scoreUS += 20;
 
-  // C. Partículas de unión (Muy típicas en apellidos compuestos)
-  // Ej: "De la Cruz", "Del Bosque", "Y" (en nombres antiguos)
-  if (/\b(de\s|del\s|la\s|y\s)/i.test(normalizado)) scoreHispano += 10;
+  // C. Patrones estructurales (Sufijos/Dígrafos Regex)
+  if (/EZ\b|NDRO\b|ICIO\b/i.test(normalizado)) scoreHispano += 10;
+  if (/(SON|SEN|TH|SH|CK|GH)\b/i.test(normalizado)) scoreUS += 10;
+  if (/[KW]/.test(normalizado)) scoreUS += 5; // Letras raras en español
 
-  // 2. Detección de caracteres Estadounidenses
-  // A. Terminaciones de apellidos patronímicos (Hijo de...)
-  // -son (Jackson), -sen (Jensen)
-  if (/\b\w+(son|sen)\b/i.test(normalizado)) scoreUS += 15;
+  // Decisión intermedia: Si la diferencia ya es masiva, ahorramos N-Gramas
+  let diferencia = Math.abs(scoreHispano - scoreUS);
+  if (diferencia >= 20) {
+    regex++;
+    return scoreHispano > scoreUS ? 'Hispano' : 'Estadounidense';
+  }
 
-  // B. Fonemas de fricativas y oclusivas (th, sh, ck, gh)
-  // Smith, Marshall, Beckett, Vaughan
-  if (/(th|sh|ck|gh|ee|oo|tt|pp)\b/i.test(normalizado)) scoreUS += 15;
-
-  // C. Prefijos de origen gaélico/escocés/irlandés
-  // Mc- (McCarthy), O'- (O'Connor), Fitz- (Fitzgerald)
-  if (/\b(Mc|O'|Fitz)/i.test(normalizado)) scoreUS += 20;
-
-  // D. Letras de alta frecuencia en inglés, bajas en español
-  // La 'k' y 'w' en nombres propios son indicadores fuertes
-  if (/[kw]/i.test(normalizado)) scoreUS += 10;
-
-  // 2. Detección de palabras clave
-
+  // --- CAPA 2: DICCIONARIO Y SUFIJOS (Memoria de Palabras) ---
   const partes = normalizado.split(/\s+/);
-  const diferencia = Math.abs(scoreHispano - scoreUS);
-  const margenMinimo = 10; // El grado de "certeza" que exiges
 
   partes.forEach((parte) => {
-    if (DATA_HISPANA.has(parte)) scoreHispano += 10;
-    if (DATA_US.has(parte)) scoreUS += 10;
+    // Búsqueda en Sets (O(1))
+    if (DATA_HISPANA.has(parte)) scoreHispano += 15;
+    if (DATA_US.has(parte)) scoreUS += 15;
 
-    if (parte.length > 4) {
+    // Sufijos dinámicos (Protección > 3 letras)
+    if (parte.length > 3) {
       if (SUFIJOS_HISPANOS.some((suf) => parte.endsWith(suf)))
-        scoreHispano += 4;
-      if (SUFIJOS_US.some((suf) => parte.endsWith(suf))) scoreUS += 4;
+        scoreHispano += 6;
+      if (SUFIJOS_US.some((suf) => parte.endsWith(suf))) scoreUS += 6;
     }
   });
 
-  if (scoreHispano > scoreUS) {
-    return 'Hispano';
+  // Decisión intermedia: Si la diferencia ya es masiva, ahorramos N-Gramas
+  diferencia = Math.abs(scoreHispano - scoreUS);
+  if (diferencia >= 20) {
+    diccionary++;
+    return scoreHispano > scoreUS ? 'Hispano' : 'Estadounidense';
   }
-  if (scoreUS > scoreHispano) {
-    return 'Estadounidense';
+
+  // --- CAPA 3: N-GRAMAS (Análisis Fonético / Desempate) ---
+  // Solo se activa si las capas anteriores no dieron una certeza absoluta
+  for (let i = 0; i < conEspacios.length - 2; i++) {
+    const trigrama = conEspacios.substring(i, i + 3);
+    if (PESOS_TRIGRAMAS[trigrama]) {
+      scoreHispano += PESOS_TRIGRAMAS[trigrama].h;
+      scoreUS += PESOS_TRIGRAMAS[trigrama].u;
+    }
   }
-  return 'Indeterminado';
-  // if (diferencia < margenMinimo) {
-  //   return 'Indeterminado';
-  // } else if (scoreHispano > scoreUS) {
-  //   return 'Hispano';
-  // } else {
-  //   return 'Estadounidense';
-  // }
+
+  // --- CLASIFICACIÓN FINAL ---
+  diferencia = Math.abs(scoreHispano - scoreUS);
+  const margenMinimo = 7; // Subimos un poco el margen por la acumulación de puntos
+
+  if (diferencia < margenMinimo) return 'Indeterminado';
+  ngrama++;
+  return scoreHispano > scoreUS ? 'Hispano' : 'Estadounidense';
 };
 
 // --- PROCESAMIENTO CON ESTADÍSTICAS AÑADIDAS ---
 
-const procesarArchivo = async () => {
+export async function procesarArchivo(
+  inputPath: string,
+  outputPath: string,
+  logPath: string,
+) {
   // const inputPath = '../pruebas/datosparafrom.csv';
   // const outputPath = '../pruebas/datosdespuesdefrom2.csv';
-  const inputPath = '../csv/datosLimpios.csv';
-  const outputPath = '../csv/datosFrom2.csv';
-  const logPath = '../logs/stats_From.txt'; // <-- Archivo donde guardaremos el log
   const filasProcesadas: any[] = [];
 
   if (!fs.existsSync(inputPath)) {
@@ -556,6 +613,11 @@ const procesarArchivo = async () => {
     totalProcesados: 0,
     nulosOVacios: 0,
     conTildesONies: 0,
+    capas: {
+      regex: 0, // Resuelto por Capa 1
+      diccionario: 0, // Resuelto por Capa 2
+      nGram: 0, // Resuelto por Capa 3
+    },
     clasificacion: {
       hispano: 0,
       estadounidense: 0,
@@ -564,80 +626,80 @@ const procesarArchivo = async () => {
   };
 
   // Leemos el archivo para capturar los headers dinámicamente
-  fs.createReadStream(inputPath)
-    .pipe(csv())
-    .on('data', (row) => {
-      // TRACKING: Contar totales
-      stats.totalProcesados++;
+  return new Promise((resolve, reject) => {
+    fs.createReadStream(inputPath)
+      .pipe(csv())
+      .on('data', (row) => {
+        // TRACKING: Contar totales
+        stats.totalProcesados++;
 
-      // TRACKING: Contar vacíos
-      if (!row.Name || row.Name.trim() === '') {
-        stats.nulosOVacios++;
-      } else if (/[ÑÁÉÍÓÚ]/i.test(row.Name)) {
-        // TRACKING: Contar caracteres latinos
-        stats.conTildesONies++;
-      }
+        // Clasificamos usando la columna "Owner"
+        const origen = clasificarNombre(row.Owner);
 
-      // Clasificamos usando la columna "Name"
-      const origen = clasificarNombre(row.Name);
+        // TRACKING: Contar resultados
+        if (origen === 'Hispano') stats.clasificacion.hispano++;
+        else if (origen === 'Estadounidense')
+          stats.clasificacion.estadounidense++;
+        else stats.clasificacion.indeterminado++;
 
-      // TRACKING: Contar resultados
-      if (origen === 'Hispano') stats.clasificacion.hispano++;
-      else if (origen === 'Estadounidense')
-        stats.clasificacion.estadounidense++;
-      else stats.clasificacion.indeterminado++;
+        // Retornamos todo el objeto original + la nueva columna
+        filasProcesadas.push({
+          ...row,
+          Label: origen,
+        });
+      })
+      .on('end', async () => {
+        if (filasProcesadas.length === 0) {
+          console.log('El CSV está vacío.');
+          return;
+        }
+        // Guardamos las estadísticas de capas y calidad de datos
+        stats.capas.regex = regex;
+        stats.capas.diccionario = diccionary;
+        stats.capas.nGram = ngrama;
+        stats.nulosOVacios = nulosOVacios;
+        stats.conTildesONies = tildesONies;
+        // Configuramos el Writer con los headers dinámicos
+        const headers = Object.keys(filasProcesadas[0]).map((key) => ({
+          id: key,
+          title: key,
+        }));
 
-      // Retornamos todo el objeto original + la nueva columna
-      filasProcesadas.push({
-        ...row,
-        From: origen,
-      });
-    })
-    .on('end', async () => {
-      if (filasProcesadas.length === 0) {
-        console.log('El CSV está vacío.');
-        return;
-      }
+        const csvWriter = createCsvWriter({
+          path: outputPath,
+          header: headers,
+        });
 
-      // Configuramos el Writer con los headers dinámicos
-      const headers = Object.keys(filasProcesadas[0]).map((key) => ({
-        id: key,
-        title: key,
-      }));
+        // --- 📈 GENERAR REPORTE DE ESTADÍSTICAS ---
+        const finTimer = Date.now();
+        const duracionSegundos = (
+          (finTimer - stats.inicioTimer) /
+          1000
+        ).toFixed(2);
 
-      const csvWriter = createCsvWriter({
-        path: outputPath,
-        header: headers,
-      });
+        const calcularPorcentaje = (cantidad: number) =>
+          stats.totalProcesados > 0
+            ? ((cantidad / stats.totalProcesados) * 100).toFixed(2)
+            : '0.00';
 
-      await csvWriter.writeRecords(filasProcesadas);
+        const barraProgreso = (cantidad: number) => {
+          const totalSlots = 20;
+          const llenos = Math.round(
+            (cantidad / stats.totalProcesados) * totalSlots,
+          );
+          return (
+            '┃' + '█'.repeat(llenos) + '░'.repeat(totalSlots - llenos) + '┃'
+          );
+        };
 
-      // --- 📈 GENERAR REPORTE DE ESTADÍSTICAS ---
-      const finTimer = Date.now();
-      const duracionSegundos = ((finTimer - stats.inicioTimer) / 1000).toFixed(
-        2,
-      );
-
-      const calcularPorcentaje = (cantidad: number) =>
-        stats.totalProcesados > 0
-          ? ((cantidad / stats.totalProcesados) * 100).toFixed(2)
-          : '0.00';
-
-      const barraProgreso = (cantidad: number) => {
-        const totalSlots = 20;
-        const llenos = Math.round(
-          (cantidad / stats.totalProcesados) * totalSlots,
-        );
-        return '┃' + '█'.repeat(llenos) + '░'.repeat(totalSlots - llenos) + '┃';
-      };
-
-      const reporteLog = `
+        const reporteLog = `
       ┌────────────────────────────────────────────────────────────┐
       │          📊 REPORTE FINAL DE CLASIFICACIÓN                 │
       └────────────────────────────────────────────────────────────┘
-        > Fecha: ${new Date().toLocaleString()}
+        > Fecha: ${new Date().toLocaleString()} es-CO
         > Duración: ${duracionSegundos}s
         > Rendimiento: ${(stats.totalProcesados / parseFloat(duracionSegundos)).toFixed(0)} reg/s
+        > Archivo Procesado: ${inputPath.split('/').pop()}
       
         ╔══════════════════════════════════════════════════════════╗
         ║                 RESUMEN DE PROCESAMIENTO                 ║
@@ -648,6 +710,11 @@ const procesarArchivo = async () => {
         ● CALIDAD DE DATOS:
           - Nulos/Vacíos   : ${stats.nulosOVacios.toString().padEnd(6)} [ ${calcularPorcentaje(stats.nulosOVacios)}% ]
           - Con Tildes/Ñ   : ${stats.conTildesONies.toString().padEnd(6)} [ ${calcularPorcentaje(stats.conTildesONies)}% ]
+
+        ● EFECTIVIDAD POR CAPA:
+          - REGEX     : ${stats.capas.regex.toString().padEnd(6)} [ ${calcularPorcentaje(stats.capas.regex)}% ]
+          - DICCIONARY: ${stats.capas.diccionario.toString().padEnd(6)} [ ${calcularPorcentaje(stats.capas.diccionario)}% ]
+          - N-GRAMA   : ${stats.capas.nGram.toString().padEnd(6)} [ ${calcularPorcentaje(stats.capas.nGram)}% ]
       
         ● DISTRIBUCIÓN POR ORIGEN:
           (H) HISPANO      : ${stats.clasificacion.hispano.toString().padEnd(6)} [ ${calcularPorcentaje(stats.clasificacion.hispano)}% ]
@@ -665,14 +732,22 @@ const procesarArchivo = async () => {
         ────────────────────────────────────────────────────────────
       `;
 
-      // 1. Imprimimos en consola
-      console.log(reporteLog);
+        try {
+          await csvWriter.writeRecords(filasProcesadas);
+          // 1. Imprimimos en consola
+          console.log(reporteLog);
+          // 2. Guardamos en el archivo
+          fs.writeFileSync(logPath, reporteLog, 'utf8');
+          console.log(
+            `✨ Proceso finalizado. Estadísticas exportadas correctamente.`,
+          );
 
-      // 2. Guardamos en el archivo
-      fs.writeFileSync(logPath, reporteLog, 'utf8');
-      console.log(
-        `✨ Proceso finalizado. Estadísticas exportadas correctamente.`,
-      );
-    });
-};
-procesarArchivo();
+          // IMPORTANTE: Solo resolvemos la promesa aquí,
+          // cuando el archivo está REALMENTE escrito en disco.
+          resolve(true);
+        } catch (error) {
+          reject(error);
+        }
+      });
+  });
+}
