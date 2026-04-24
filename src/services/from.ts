@@ -5,7 +5,6 @@ import { createObjectCsvWriter as createCsvWriter } from 'csv-writer';
 
 // --- CONFIGURACIÓN DE PATRONES (INTACTO) ---
 const DATA_HISPANA = new Set([
-  // Tus originales (Top Global + Colombia)
   'GARCIA',
   'RODRIGUEZ',
   'GONZALEZ',
@@ -56,7 +55,6 @@ const DATA_HISPANA = new Set([
   'VALENCIA',
   'HURTADO',
   'PORTOCARRERO',
-  // Expansión: Más comunes en Latinoamérica
   'VELASQUEZ',
   'RIVERA',
   'ORTEGA',
@@ -107,7 +105,6 @@ const DATA_HISPANA = new Set([
   'CABRERA',
   'CASTELLANOS',
   'ESTRADA',
-  // Expansión: Refuerzo Valle del Cauca / Colombia
   'ARBOLEDA',
   'BOLAÑOS',
   'CABAL',
@@ -138,9 +135,77 @@ const DATA_HISPANA = new Set([
   'PABON',
   'TABARES',
   'URIBE',
+  'SEBASTIÁN',
+  'ALEJANDRO',
+  'MIGUEL',
+  'ÁNGEL',
+  'JUAN',
+  'JOSÉ',
+  'BARTOLOMÉ',
+  'ÍÑIGO',
+  'JERÓNIMO',
+  'JOAQUÍN',
+  'AGUSTÍN',
+  'FROILÁN',
+  'ESTEBAN',
+  'GONZALO',
+  'SANTIAGO',
+  'MATÍAS',
+  'NICOLÁS',
+  'VALENTÍN',
+  'DAMIÁN',
+  'ADRIÁN',
+  'ÁLVARO',
+  'ÍKER',
+  'RAÚL',
+  'SAÚL',
+  'RENÉ',
+  'IGNACIO',
+  'FRANCISCO',
+  'FERNANDO',
+  'RODRIGO',
+  'VICENTE',
+  'JAVIER',
+  'MAURICIO',
+  'GABRIEL',
+  'ANDRÉS',
+  'RAMÓN',
+  'FELIPE',
+  'MARÍA',
+  'LUCÍA',
+  'XIMENA',
+  'BEATRIZ',
+  'VERÓNICA',
+  'SOFÍA',
+  'PIEDAD',
+  'AMPARO',
+  'ROCÍO',
+  'CONCEPCIÓN',
+  'ENCARNACIÓN',
+  'JIMENA',
+  'YOLANDA',
+  'LETICIA',
+  'GUADALUPE',
+  'ROSARIO',
+  'MERCEDES',
+  'DOLORES',
+  'CARMEN',
+  'TERESA',
+  'MARTHA',
+  'REBECA',
+  'ADRIANA',
+  'ESPERANZA',
+  'ASCENSIÓN',
+  'ASUNCIÓN',
+  'MILAGROS',
+  'ESTEFANÍA',
+  'ALMUDENA',
+  'ARACELI',
+  'CECILIA',
+  'GRACIELA',
+  'INÉS',
 ]);
 const DATA_US = new Set([
-  // Tus originales (Nombres y Apellidos)
   'HENRY',
   'JOHNSON',
   'JILL',
@@ -197,7 +262,6 @@ const DATA_US = new Set([
   'BRADLEY',
   'VOORHIS',
   'STEVENS',
-  'MURPHY',
   'COOK',
   'ROGERS',
   'MORGAN',
@@ -231,58 +295,36 @@ const DATA_US = new Set([
   'ALEXANDER',
   'RUSSELL',
   'GRIFFIN',
-  // Expansión: Apellidos Anglo/Euro-Americanos
   'STEWART',
   'MORRIS',
   'NGUYEN',
   'MURPHY',
-  'RIVERA',
-  'COOK',
-  'ROGERS',
   'PETERS',
   'PERRY',
   'POWELL',
   'LONG',
   'PATTERSON',
   'HUGHES',
-  'FLORES',
-  'WASHINGTON',
-  'BUTLER',
-  'SIMMONS',
-  'FOSTER',
-  'GONZALES',
-  'BRYANT',
-  'ALEXANDER',
-  'RUSSELL',
-  'GRIFFIN',
-  'DIAZ',
   'HAYES',
   'MYERS',
   'FORD',
-  'HAMILTON',
   'GRAHAM',
-  'SULLIVAN',
   'WALLACE',
   'COLE',
   'WEST',
   'JORDAN',
   'OWENS',
   'REYNOLDS',
-  'FISHER',
   'ELLIS',
   'HARRISON',
   'GIBSON',
   'MCDONALD',
-  'CRUZ',
   'MARSHALL',
-  'ORTIZ',
-  'GOMEZ',
   'MURRAY',
   'FREEMAN',
   'WELLS',
   'WEBB',
   'SIMPSON',
-  'STEVENS',
   'TUCKER',
   'PORTER',
   'HUNTER',
@@ -292,6 +334,66 @@ const DATA_US = new Set([
   'MASON',
   'MORRISON',
   'KENNEDY',
+  'WILLIAM',
+  'WYATT',
+  'WESTON',
+  'WALKER',
+  'WAYNE',
+  'WARREN',
+  'WALTER',
+  'KEVIN',
+  'KYLE',
+  'KENT',
+  'KEITH',
+  'KIRK',
+  'KALEB',
+  'KENNETH',
+  'TYLER',
+  'ZACHARY',
+  'GREGORY',
+  'BRADLEY',
+  'ANTHONY',
+  'TIMOTHY',
+  'DOROTHY',
+  'BETHANY',
+  'HEATHER',
+  'SHIRLEY',
+  'SHEILA',
+  'SHARON',
+  'SHELDON',
+  'SHANE',
+  'CHADWICK',
+  'BECKETT',
+  'BROCK',
+  'CHANDLER',
+  'HUNTER',
+  'PARKER',
+  'COOPER',
+  'SAWYER',
+  'FLETCHER',
+  'JONATHAN',
+  'NATHAN',
+  'ETHAN',
+  'MATTHEW',
+  'CHHENG',
+  'DWIGHT',
+  'BRITTANY',
+  'CHELSEA',
+  'ASHLEY',
+  'COURTNEY',
+  'WHITNEY',
+  'BEVERLY',
+  'TIFFANY',
+  'KIMBERLY',
+  'MACKENZIE',
+  'MADISON',
+  'ADDISON',
+  'BROOKLYN',
+  'SKYLAR',
+  'HARPER',
+  'PAXTON',
+  'QUINTON',
+  'MAXWELL',
 ]);
 
 const SUFIJOS_HISPANOS = [
@@ -365,16 +467,46 @@ const SUFIJOS_US = [
  * Lógica de clasificación por pesos (INTACTO)
  */
 const clasificarNombre = (nombreCompleto: string | undefined): string => {
-  if (!nombreCompleto) return 'Indeterminado';
+  if (!nombreCompleto) return '';
 
   const normalizado = nombreCompleto.toUpperCase().trim();
   let scoreHispano = 0;
   let scoreUS = 0;
 
   // 1. Detección de caracteres latinos
-  if (/[ÑÁÉÍÓÚ]/.test(normalizado)) scoreHispano += 15;
+  // A. Tildes y Ñ (Prueba irrefutable)
+  if (/[ñáéíóúü]/i.test(normalizado)) scoreHispano += 20;
+
+  // B. Dígrafos iniciales y terminaciones comunes
+  // 'Ll' al inicio o apellidos que terminan en 'ez' (Rodríguez, Pérez)
+  if (/^Ll|ez\b|ndro\b|ocio\b/i.test(normalizado)) scoreHispano += 15;
+
+  // C. Partículas de unión (Muy típicas en apellidos compuestos)
+  // Ej: "De la Cruz", "Del Bosque", "Y" (en nombres antiguos)
+  if (/\b(de\s|del\s|la\s|y\s)/i.test(normalizado)) scoreHispano += 10;
+
+  // 2. Detección de caracteres Estadounidenses
+  // A. Terminaciones de apellidos patronímicos (Hijo de...)
+  // -son (Jackson), -sen (Jensen)
+  if (/\b\w+(son|sen)\b/i.test(normalizado)) scoreUS += 15;
+
+  // B. Fonemas de fricativas y oclusivas (th, sh, ck, gh)
+  // Smith, Marshall, Beckett, Vaughan
+  if (/(th|sh|ck|gh|ee|oo|tt|pp)\b/i.test(normalizado)) scoreUS += 15;
+
+  // C. Prefijos de origen gaélico/escocés/irlandés
+  // Mc- (McCarthy), O'- (O'Connor), Fitz- (Fitzgerald)
+  if (/\b(Mc|O'|Fitz)/i.test(normalizado)) scoreUS += 20;
+
+  // D. Letras de alta frecuencia en inglés, bajas en español
+  // La 'k' y 'w' en nombres propios son indicadores fuertes
+  if (/[kw]/i.test(normalizado)) scoreUS += 10;
+
+  // 2. Detección de palabras clave
 
   const partes = normalizado.split(/\s+/);
+  const diferencia = Math.abs(scoreHispano - scoreUS);
+  const margenMinimo = 10; // El grado de "certeza" que exiges
 
   partes.forEach((parte) => {
     if (DATA_HISPANA.has(parte)) scoreHispano += 10;
@@ -387,16 +519,29 @@ const clasificarNombre = (nombreCompleto: string | undefined): string => {
     }
   });
 
-  if (scoreHispano > scoreUS) return 'Hispano';
-  if (scoreUS > scoreHispano) return 'Estadounidense';
+  if (scoreHispano > scoreUS) {
+    return 'Hispano';
+  }
+  if (scoreUS > scoreHispano) {
+    return 'Estadounidense';
+  }
   return 'Indeterminado';
+  // if (diferencia < margenMinimo) {
+  //   return 'Indeterminado';
+  // } else if (scoreHispano > scoreUS) {
+  //   return 'Hispano';
+  // } else {
+  //   return 'Estadounidense';
+  // }
 };
 
 // --- PROCESAMIENTO CON ESTADÍSTICAS AÑADIDAS ---
 
 const procesarArchivo = async () => {
+  // const inputPath = '../pruebas/datosparafrom.csv';
+  // const outputPath = '../pruebas/datosdespuesdefrom2.csv';
   const inputPath = '../csv/datosLimpios.csv';
-  const outputPath = '../csv/datosFrom.csv';
+  const outputPath = '../csv/datosFrom2.csv';
   const logPath = '../logs/stats_From.txt'; // <-- Archivo donde guardaremos el log
   const filasProcesadas: any[] = [];
 
@@ -478,34 +623,56 @@ const procesarArchivo = async () => {
           ? ((cantidad / stats.totalProcesados) * 100).toFixed(2)
           : '0.00';
 
+      const barraProgreso = (cantidad: number) => {
+        const totalSlots = 20;
+        const llenos = Math.round(
+          (cantidad / stats.totalProcesados) * totalSlots,
+        );
+        return '┃' + '█'.repeat(llenos) + '░'.repeat(totalSlots - llenos) + '┃';
+      };
+
       const reporteLog = `
-==================================================
-📊 REPORTE DE CLASIFICACIÓN DE NOMBRES
-==================================================
-Fecha de ejecución: ${new Date().toLocaleString()}
-Tiempo de procesamiento: ${duracionSegundos} segundos
+      ┌────────────────────────────────────────────────────────────┐
+      │          📊 REPORTE FINAL DE CLASIFICACIÓN                 │
+      └────────────────────────────────────────────────────────────┘
+        > Fecha: ${new Date().toLocaleString()}
+        > Duración: ${duracionSegundos}s
+        > Rendimiento: ${(stats.totalProcesados / parseFloat(duracionSegundos)).toFixed(0)} reg/s
+      
+        ╔══════════════════════════════════════════════════════════╗
+        ║                 RESUMEN DE PROCESAMIENTO                 ║
+        ╚══════════════════════════════════════════════════════════╝
+        
+        [ TOTAL PROCESADOS ] : ${stats.totalProcesados.toLocaleString().padEnd(10)}
+      
+        ● CALIDAD DE DATOS:
+          - Nulos/Vacíos   : ${stats.nulosOVacios.toString().padEnd(6)} [ ${calcularPorcentaje(stats.nulosOVacios)}% ]
+          - Con Tildes/Ñ   : ${stats.conTildesONies.toString().padEnd(6)} [ ${calcularPorcentaje(stats.conTildesONies)}% ]
+      
+        ● DISTRIBUCIÓN POR ORIGEN:
+          (H) HISPANO      : ${stats.clasificacion.hispano.toString().padEnd(6)} [ ${calcularPorcentaje(stats.clasificacion.hispano)}% ]
+          ${barraProgreso(stats.clasificacion.hispano)}
+      
+          (U) EE.UU.       : ${stats.clasificacion.estadounidense.toString().padEnd(6)} [ ${calcularPorcentaje(stats.clasificacion.estadounidense)}% ]
+          ${barraProgreso(stats.clasificacion.estadounidense)}
+      
+          (I) INDETERMINADO: ${stats.clasificacion.indeterminado.toString().padEnd(6)} [ ${calcularPorcentaje(stats.clasificacion.indeterminado)}% ]
+          ${barraProgreso(stats.clasificacion.indeterminado)}
+      
+        ____________________________________________________________
+        📁 OUTPUT  : ${outputPath}
+        📝 LOG     : ${logPath}
+        ────────────────────────────────────────────────────────────
+      `;
 
---- 1. DATOS GENERALES ---
-Total de filas escaneadas:  ${stats.totalProcesados}
-Nombres vacíos o nulos:     ${stats.nulosOVacios} (${calcularPorcentaje(stats.nulosOVacios)}%)
-Nombres con tildes o Ñ:     ${stats.conTildesONies} (${calcularPorcentaje(stats.conTildesONies)}%)
-
---- 2. DISTRIBUCIÓN DE CLASIFICACIÓN ---
-Hispano:          ${stats.clasificacion.hispano} (${calcularPorcentaje(stats.clasificacion.hispano)}%)
-Estadounidense:   ${stats.clasificacion.estadounidense} (${calcularPorcentaje(stats.clasificacion.estadounidense)}%)
-Indeterminado:    ${stats.clasificacion.indeterminado} (${calcularPorcentaje(stats.clasificacion.indeterminado)}%)
-
-==================================================
-✅ Archivo CSV generado en: ${outputPath}
-==================================================`;
-
-      // 1. Imprimimos en consola (console log)
+      // 1. Imprimimos en consola
       console.log(reporteLog);
 
-      // 2. Guardamos en el archivo (save log)
+      // 2. Guardamos en el archivo
       fs.writeFileSync(logPath, reporteLog, 'utf8');
-      console.log(`📝 Log de estadísticas guardado en: ${logPath}`);
+      console.log(
+        `✨ Proceso finalizado. Estadísticas exportadas correctamente.`,
+      );
     });
 };
-
 procesarArchivo();

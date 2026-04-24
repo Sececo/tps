@@ -4,18 +4,22 @@ import csv from 'csv-parser';
 import { createObjectCsvWriter } from 'csv-writer';
 
 interface RawData {
-  dueno: string;
-  direccion_inmueble: string;
-  direccion_dueno: string;
-  zip_dueno: string;
-  anio_construccion: string;
-  ciudad?: string;
+  Name: string;
+  Adress: string;
+  Zip: string;
+  Year: string;
+  District?: string;
 }
 
 // const INPUT_FILE = './datos_mock.csv';
 
-const INPUT_FILE = '../csv/datosIniciales.csv';
+// const INPUT_FILE = '../csv/datosIniciales.csv';
+const INPUT_FILE = '../csv/revere.csv';
 const OUTPUT_FILE = '../csv/datosLimpios.csv';
+const OUTPUT_FILE_ENTIDADES = '../csv/datosEntidades.csv';
+const OUTPUT_FILE_OTRO_ZIP = '../csv/datosOtroZip.csv';
+const BACKUP_DIR = '../backups/'; //si va ha evaluar una ciudad en especifico especificarla aqui, por ejemplo: '../backups/springfield/' y asegurarse de que exista la carpeta antes de ejecutar el script
+const backupPath = `${BACKUP_DIR}backup_${Date.now()}_datosIniciales.csv`;
 const LOG_FILE = '../logs/cleaner_logs.txt';
 
 // Función para guardar logs con timestamp y mostrar en consola
@@ -26,10 +30,12 @@ function saveLog(message: string) {
   console.log(message);
 }
 
+// funcion para determinar si un nombre es una entidad o ciudad, usando una lista negra de palabras clave
 function isEntityOrCity(name: string): boolean {
   const nameLower = name.toLowerCase().trim();
   const blackList = [
     // Corporaciones y empresas
+    'association',
     'inc',
     'incorporated',
     'corp',
@@ -135,6 +141,7 @@ function isEntityOrCity(name: string): boolean {
   );
 }
 
+// función para obtener la ciudad a partir del código postal, usando un mapeo predefinido
 function getCityFromZip(zip: string): string | null {
   const cleanZip = (zip || '').trim().substring(0, 5);
 
@@ -167,8 +174,30 @@ function getCityFromZip(zip: string): string | null {
   return mapping[cleanZip] || null;
 }
 
+function generarBackup() {
+  try {
+    // Asegurarse de que la carpeta de backups exista
+    if (!fs.existsSync(BACKUP_DIR)) {
+      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    }
+
+    // Copiar el archivo original al destino de backup
+    fs.copyFileSync(INPUT_FILE, backupPath);
+
+    saveLog(`🛡️ Backup creado con éxito: ${backupPath}`);
+  } catch (error) {
+    saveLog(
+      `❌ Error crítico: No se pudo crear el backup. Deteniendo proceso.`,
+    );
+    process.exit(1); // Detenemos el script si el backup falla por seguridad
+  }
+}
+
 async function filtrarDatos() {
+  generarBackup();
   const resultados: RawData[] = [];
+  const resultadosEntidades: RawData[] = []; // Para isEntityOrCity === true
+  const resultadosOtroZip: RawData[] = []; // Para getCityFromZip
   const contadorPorLugar: { [key: string]: number } = {};
   const registrosExistentes = new Set<string>();
 
@@ -177,7 +206,7 @@ async function filtrarDatos() {
   let descartadosPorZip = 0;
   let descartadosPorEntidad = 0;
   let duplicadosExactosOmitidos = 0;
-  let descartadosPorFaltaDueno = 0;
+  let descartadosPorFaltaName = 0;
 
   const fileExists = fs.existsSync(OUTPUT_FILE);
 
@@ -187,9 +216,7 @@ async function filtrarDatos() {
       fs.createReadStream(OUTPUT_FILE)
         .pipe(csv())
         .on('data', (row) => {
-          const llave = `${row.dueno}|${row.direccion_inmueble}`
-            .toLowerCase()
-            .trim();
+          const llave = `${row.Name}|${row.Adress}`.toLowerCase().trim();
           registrosExistentes.add(llave);
         })
         .on('end', resolve);
@@ -202,95 +229,175 @@ async function filtrarDatos() {
     .on('data', (row: RawData) => {
       totalOriginal++;
 
-      const tieneDueno = row.dueno && row.dueno.trim() !== '';
-      const esEntidad = isEntityOrCity(row.dueno || '');
-      const localizacion = getCityFromZip(row.zip_dueno || '');
-      const llaveActual = `${row.dueno}|${row.direccion_inmueble}`
-        .toLowerCase()
-        .trim();
+      const tieneName = row.Name && row.Name.trim() !== '';
+      const esEntidad = isEntityOrCity(row.Name || '');
+      const localizacion = getCityFromZip(row.Zip || '');
+      const llaveActual = `${row.Name}|${row.Adress}`.toLowerCase().trim();
 
       // Prioridad de filtrado
-      if (!tieneDueno) {
-        descartadosPorFaltaDueno++;
+      if (!tieneName) {
+        descartadosPorFaltaName++;
         return;
-      } else {
-        if (registrosExistentes.has(llaveActual)) {
-          duplicadosExactosOmitidos++;
-          return;
-        }
+      }
+      if (registrosExistentes.has(llaveActual)) {
+        duplicadosExactosOmitidos++;
+        return;
+      }
 
-        if (tieneDueno && esEntidad) {
-          descartadosPorEntidad++;
-          return;
-        }
+      if (tieneName && esEntidad) {
+        descartadosPorEntidad++;
+        resultadosEntidades.push(row);
+        return;
+      }
 
-        if (tieneDueno && !localizacion) {
-          descartadosPorZip++;
-          return;
-        }
+      if (tieneName && !localizacion) {
+        descartadosPorZip++;
+        resultadosOtroZip.push(row);
+        return;
+      }
 
-        if (tieneDueno && !esEntidad && localizacion) {
-          row.ciudad = localizacion;
-          resultados.push(row);
-          registrosExistentes.add(llaveActual);
-          totalFiltrado++;
-          contadorPorLugar[localizacion] =
-            (contadorPorLugar[localizacion] || 0) + 1;
-        }
+      if (tieneName && !esEntidad && localizacion) {
+        row.District = localizacion;
+        resultados.push(row);
+        registrosExistentes.add(llaveActual);
+        totalFiltrado++;
+        contadorPorLugar[localizacion] =
+          (contadorPorLugar[localizacion] || 0) + 1;
       }
     })
     .on('end', async () => {
-      const csvWriter = createObjectCsvWriter({
-        path: OUTPUT_FILE,
-        header: [
-          { id: 'dueno', title: 'Name' },
-          { id: 'direccion_inmueble', title: 'Adress' },
-          { id: 'ciudad', title: 'District' },
-          { id: 'zip_dueno', title: 'Zip' },
-          { id: 'anio_construccion', title: 'Build_year' },
-        ],
-        append: fileExists,
-      });
+      const header = [
+        { id: 'Name', title: 'Name' },
+        { id: 'Adress', title: 'Adress' },
+        { id: 'District', title: 'District' },
+        { id: 'Zip', title: 'Zip' },
+        { id: 'Year', title: 'Year' },
+      ];
 
       if (resultados.length > 0) {
-        await csvWriter.writeRecords(resultados);
+        const csvWriter = createObjectCsvWriter({
+          path: OUTPUT_FILE,
+          header,
+          append: fs.existsSync(OUTPUT_FILE),
+        });
+        await csvWriter.writeRecords(resultadosEntidades);
+      }
+
+      if (resultadosEntidades.length > 0) {
+        const csvWriterEntidades = createObjectCsvWriter({
+          path: OUTPUT_FILE_ENTIDADES,
+          header,
+          append: fs.existsSync(OUTPUT_FILE_ENTIDADES),
+        });
+        await csvWriterEntidades.writeRecords(resultadosEntidades);
+        console.log(
+          `✅ ${resultadosEntidades.length} entidades guardadas en: ${OUTPUT_FILE_ENTIDADES}`,
+        );
+      }
+
+      // 3. Escritura de Registros Sin ZIP
+      if (resultadosOtroZip.length > 0) {
+        const csvWriterSinZip = createObjectCsvWriter({
+          path: OUTPUT_FILE_OTRO_ZIP,
+          header,
+          append: fs.existsSync(OUTPUT_FILE_OTRO_ZIP),
+        });
+        await csvWriterSinZip.writeRecords(resultadosOtroZip);
+        console.log(
+          `✅ ${resultadosOtroZip.length} registros sin ZIP guardados en: ${OUTPUT_FILE_OTRO_ZIP}`,
+        );
       }
 
       // --- CÁLCULO DE ESTADÍSTICAS ---
+
+      // --- 📊 GENERAR INFORME DE EJECUCIÓN ---
       const porcentajeExito =
         totalOriginal > 0
           ? ((totalFiltrado / totalOriginal) * 100).toFixed(2)
-          : 0;
+          : '0.00';
+
       const totalEnBaseFinal = registrosExistentes.size;
 
-      const infoResumen = [
-        `\n--- 📊 INFORME DE EJECUCIÓN (${new Date().toLocaleTimeString()}) ---`,
-        `📦 Total registros leídos:      ${totalOriginal}`,
-        `✅ Nuevos agregados:           ${totalFiltrado} (${porcentajeExito}%)`,
-        `⚠️ Descartados por falta de dueño: ${descartadosPorFaltaDueno}`,
-        `👯 Duplicados exactos:         ${duplicadosExactosOmitidos}`,
-        `🏢 Entidades/Empresas:         ${descartadosPorEntidad}`,
-        `📍 Fuera de zona (ZIP):        ${descartadosPorZip}`,
-        `🗂️ Total acumulado en base:    ${totalEnBaseFinal}`,
-        `--------------------------------------------------`,
-      ].join('\n');
+      const reporteEjecucion = `
+      ┌────────────────────────────────────────────────────────────┐
+      │         🔄 PROCESO DE INTEGRACIÓN Y FILTRADO               │
+      └────────────────────────────────────────────────────────────┘
+        > Hora: ${new Date().toLocaleTimeString()}
+        > Estado: ${totalFiltrado > 0 ? '✅ ACTUALIZADO' : 'ℹ️ SIN CAMBIOS'}
 
-      // IMPRESIÓN DUAL
-      console.log(infoResumen);
-      fs.appendFileSync(LOG_FILE, infoResumen + '\n');
+        ╔══════════════════════════════════════════════════════════╗
+        ║                MÉTRICAS DE FLUJO DE DATOS                ║
+        ╚══════════════════════════════════════════════════════════╝
 
-      if (totalFiltrado > 0) {
-        const tablaOrdenada = Object.entries(contadorPorLugar)
-          .map(([sector, total]) => ({
-            Sector: sector,
-            Agregados: total,
-          }))
-          .sort((a, b) => b.Agregados - a.Agregados);
+        📦 ENTRADA BRUTA (CSV) : ${totalOriginal.toLocaleString().padEnd(10)}
+        ✅ ÉXITO DE FILTRADO   : ${totalFiltrado.toLocaleString().padEnd(10)} [ ${porcentajeExito}% ]
 
-        console.table(tablaOrdenada);
-      } else {
-        console.log('⚠️ No se añadieron registros nuevos en esta vuelta.');
-      }
+        🚫 REGISTROS DESCARTADOS:
+          - Sin dueño/nombre : ${descartadosPorFaltaName.toString().padEnd(6)} (Falta de datos)
+          - Entidades/Empresas: ${descartadosPorEntidad.toString().padEnd(6)} (Filtro corporativo)
+          - Fuera de zona     : ${descartadosPorZip.toString().padEnd(6)} (ZIP no admitido)
+          - Duplicados        : ${duplicadosExactosOmitidos.toString().padEnd(6)} (Ya existentes)
+
+        🗂️ ESTADO DE LA BASE FINAL:
+          - Total acumulado   : ${totalEnBaseFinal.toLocaleString()} registros únicos
+
+        ╔══════════════════════════════════════════════════════════╗
+        ║               📌 DISTRIBUCIÓN POR DISTRITO               ║
+        ╚══════════════════════════════════════════════════════════╝
+
+
+      `;
+
+      // renderizarTablaDistritos();
+      saveLog(reporteEjecucion);
+
+      // --- 🎨 CONFIGURACIÓN DE COLORES PARA CONSOLA ---
+      const F = {
+        reset: '\x1b[0m',
+        bold: '\x1b[1m',
+        cyan: '\x1b[36m',
+        green: '\x1b[32m',
+        yellow: '\x1b[33m',
+        gray: '\x1b[90m',
+        bgGray: '\x1b[100m',
+      };
+
+      const tablaOrdenada = Object.entries(contadorPorLugar)
+        .map(([sector, total]) => ({
+          Sector: sector,
+          Agregados: total,
+        }))
+        .sort((a, b) => b.Agregados - a.Agregados);
+
+      // --- 🛠️ CONSTRUCCIÓN DE LA TABLA ESTÉTICA ---
+      console.log(
+        `\n${F.bold}${F.cyan}╔════════════════════════════════════╤══════════╤════════════════════════╗${F.reset}`,
+      );
+      console.log(
+        `${F.bold}${F.cyan}║         DISTRITO / SECTOR          │  TOTAL   │     RANKING VISUAL     ║${F.reset}`,
+      );
+      console.log(
+        `${F.bold}${F.cyan}╟────────────────────────────────────┼──────────┼────────────────────────╢${F.reset}`,
+      );
+
+      tablaOrdenada.forEach(({ Sector, Agregados }) => {
+        // Cálculo de barra de progreso (máximo 20 caracteres)
+        const porcentaje = totalFiltrado > 0 ? Agregados / totalFiltrado : 0;
+        const numBloques = Math.round(porcentaje * 100);
+        const barra = `${F.green}${'█'.repeat(numBloques)}${F.gray}${'░'.repeat(20 - numBloques)}${F.reset}`;
+
+        // Formateo de la fila
+        const nombreSector = Sector.padEnd(34);
+        const cantidad = Agregados.toString().padStart(6);
+
+        console.log(
+          `${F.bold}${F.cyan}║${F.reset} ${nombreSector} ${F.bold}${F.cyan}│${F.reset} ${F.yellow}${cantidad}${F.reset}   ${F.bold}${F.cyan}│${F.reset}  ${barra}  ${F.bold}${F.cyan}║${F.reset}`,
+        );
+      });
+
+      console.log(
+        `${F.bold}${F.cyan}╚════════════════════════════════════╧══════════╧════════════════════════╝${F.reset}\n`,
+      );
     });
 }
 

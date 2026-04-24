@@ -2,47 +2,53 @@
 import * as fs from 'fs';
 import csv from 'csv-parser';
 import { createObjectCsvWriter as createCsvWriter } from 'csv-writer';
-import dotenv from 'dotenv';
 
-dotenv.config();
+export async function agregarLinks(inputFile: string, outputFile: string) {
+  const CITY = process.env.CITY || 'default_city';
+  const firstUrl = process.env.FIRST_URL;
+  const secondUrl = process.env.SECOND_URL;
+  const thirdUrl = process.env.THIRD_URL;
+  const results: any[] = [];
+  fs.createReadStream(inputFile)
+    .pipe(csv())
+    .on('data', (row) => {
+      const address = row.Address?.trim() || '';
+      const location = `${CITY},MA`;
+      const zip = row.Zip?.trim() || '';
+      const district = row.District?.trim() || '';
+      const fullAddress = `${address}, ${district}, ${zip}`;
+      if (!(row.Tps || '').includes(thirdUrl)) {
+        row.Tps = `${firstUrl}${encodeURIComponent(address)}&citystatezip=${encodeURIComponent(location)}`;
+      }
 
-const inputFile = '../csv/datosDeterminado.csv';
-const outputFile = '../csv/datosFinales.csv';
-const baseUrl = process.env.BASE_URL;
+      row.Maps_1 = `${secondUrl}${encodeURIComponent(address.replace(/\s+/g, '+'))},${encodeURIComponent(zip)}`;
+      row.Maps_2 = `${secondUrl}${encodeURIComponent(fullAddress.replace(/\s+/g, '+'))}`;
+      row.Maps_3 = `${secondUrl}${encodeURIComponent(address.replace(/\s+/g, '+'))},${encodeURIComponent(location)}`;
 
-const results: any[] = [];
+      results.push(row);
+    })
+    .on('end', () => {
+      if (results.length === 0) {
+        console.log('El archivo está vacío o no tiene el formato correcto.');
+        return;
+      }
 
-fs.createReadStream(inputFile)
-  .pipe(csv())
-  .on('data', (row) => {
-    const name = row.Adress?.trim() || '';
-    const location = row.Zip?.trim() || '';
+      // 2. Configurar el Writer con las cabeceras dinámicas
+      const headers = Object.keys(results[0]).map((key) => ({
+        id: key,
+        title: key,
+      }));
 
-    row.url = `${baseUrl}?name=${encodeURIComponent(name)}&citystatezip=${encodeURIComponent(location)}`;
+      const csvWriter = createCsvWriter({
+        path: outputFile,
+        header: headers,
+      });
 
-    results.push(row);
-  })
-  .on('end', () => {
-    if (results.length === 0) {
-      console.log('El archivo está vacío o no tiene el formato correcto.');
-      return;
-    }
-
-    // 2. Configurar el Writer con las cabeceras dinámicas
-    const headers = Object.keys(results[0]).map((key) => ({
-      id: key,
-      title: key,
-    }));
-
-    const csvWriter = createCsvWriter({
-      path: outputFile,
-      header: headers,
+      csvWriter
+        .writeRecords(results)
+        .then(() =>
+          console.log(`Proceso terminado. Archivo guardado en: ${outputFile}`),
+        )
+        .catch((err) => console.error('Error al escribir el CSV:', err));
     });
-
-    csvWriter
-      .writeRecords(results)
-      .then(() =>
-        console.log(`Proceso terminado. Archivo guardado en: ${outputFile}`),
-      )
-      .catch((err) => console.error('Error al escribir el CSV:', err));
-  });
+}

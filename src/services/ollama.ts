@@ -2,12 +2,15 @@
 import * as fs from 'fs';
 import csv from 'csv-parser';
 import { createObjectCsvWriter as createCsvWriter } from 'csv-writer';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 /**
  * CONFIGURACIÓN DEL SERVICIO
  */
 const OLLAMA_API_URL = 'http://localhost:11434/api/generate';
-const MODEL_NAME = 'gemma2:2b'; // Ajustado a tu versión estable
+const MODEL_NAME = process.env.MODEL_NAME; // Ajustado a tu versión estable
 const BATCH_SIZE = 25; // Tamaño del bloque para procesamiento masivo
 // Permitir retomar desde un lote específico
 const START_BATCH = parseInt(process.argv[2] || '0', 10); // 👈 lee argumento de consola
@@ -23,14 +26,16 @@ interface FilaCSV {
 const procesarBloqueOllama = async (
   nombres: string[],
 ): Promise<Record<string, string>> => {
-  // Ajuste de contexto: Se exige explícitamente no usar markdown para no saturar el procesamiento
-  // Mejora: Usamos salto de línea para que la IA distinga mejor los nombres compuestos
-  const prompt = `Clasifica estos nombres como 'Hispano' o 'Estadounidense'.
-  Responde ÚNICAMENTE con un objeto JSON. Mantén el nombre exacto como clave.
-  Nombres a procesar:
-  ${nombres.join('\n')}
-  
-  Formato requerido: {"Nombre Completo": "Clasificación"}`;
+  // // Ajuste de contexto: Se exige explícitamente no usar markdown para no saturar el procesamiento
+  // // Mejora: Usamos salto de línea para que la IA distinga mejor los nombres compuestos
+  // const prompt = `Clasifica estos nombres como 'Hispano' o 'Estadounidense'.
+  // Responde ÚNICAMENTE con un objeto JSON. Mantén el nombre exacto como clave.
+  // Nombres a procesar:
+  // ${nombres.join('\n')}
+
+  const prompt = `${nombres.join('\n')}`;
+
+  // Formato requerido: {"Nombre Completo": "Clasificación"}`;
 
   try {
     const response = await fetch(OLLAMA_API_URL, {
@@ -38,14 +43,14 @@ const procesarBloqueOllama = async (
       body: JSON.stringify({
         model: MODEL_NAME,
         prompt: prompt,
-        format: 'json',
+        //format: 'json',
         stream: false,
-        options: {
-          temperature: 0, // Bajamos la temperatura para que sea más determinista
-          num_thread: 8,
-          num_predict: 500, // Limita la generación para no saturar memoria/tiempo
-          num_ctx: 1024, // Limita la ventana de contexto a lo estrictamente necesario
-        },
+        // options: {
+        //   temperature: 0, // Bajamos la temperatura para que sea más determinista
+        //   num_thread: 8,
+        //   num_predict: 500, // Limita la generación para no saturar memoria/tiempo
+        //   num_ctx: 1024, // Limita la ventana de contexto a lo estrictamente necesario
+        // },
       }),
     });
 
@@ -75,10 +80,10 @@ const procesarBloqueOllama = async (
  * PROCESO PRINCIPAL
  */
 const corregirIndeterminados = async () => {
-  const inputPath = '../csv/datosFrom.csv';
-  const outputPath = '../csv/datosOllama.csv'; // Archivo para los exitosos
-  const indeterminadosPath = '../csv/indeterminadosOllama.csv'; // Archivo para los fallidos
-  const logPath = '../logs/ollama_stats.txt';
+  const inputPath = 'src/csv/datosIndeterminados.csv';
+  const outputPath = 'src/csv/datosOllama.csv'; // Archivo para los exitosos
+  const indeterminadosPath = 'src/csv/datosIndeterminadosOllama.csv'; // Archivo para los fallidos
+  const logPath = 'src/logs/ollama_stats.txt';
   const todasLasFilas: FilaCSV[] = [];
 
   if (!fs.existsSync(inputPath)) {
@@ -95,7 +100,13 @@ const corregirIndeterminados = async () => {
     lotesProcesados: 0,
   };
 
-  console.log('🚀 Cargando datos en memoria...');
+  const hr = '━'.repeat(50);
+  const dot = '•';
+
+  console.log(`\n${hr}`);
+  console.log(`  🚀 SISTEMA DE PROCESAMIENTO IA`);
+  console.log(`${hr}`);
+  console.log(`${dot} Estatus: Cargando datos en memoria...`);
 
   const readStream = fs.createReadStream(inputPath).pipe(csv());
   for await (const row of readStream) {
@@ -104,19 +115,32 @@ const corregirIndeterminados = async () => {
 
   // Identificamos las filas que Ollama debe procesar
   const indicesIndeterminados = todasLasFilas
-    .map((row, index) => (row.From === 'Indeterminado' ? index : -1))
+    .map((row, index) => {
+      // row.From será "" en tu ejemplo (porque hay una coma al final pero nada escrito)
+      const valor = row.From ? undefined : ''; // Aseguramos que undefined también se trate como indeterminado
+
+      // Seleccionamos si está vacío o si es la palabra literal "Indeterminado"
+      return valor === '' || valor === 'Indeterminado' ? index : -1;
+    })
     .filter((index) => index !== -1);
 
   statsIA.totalIndeterminados = indicesIndeterminados.length;
 
   if (statsIA.totalIndeterminados === 0) {
-    console.log("✅ No se encontraron nombres 'Indeterminados' para procesar.");
+    console.log(
+      `${dot} Resultado: ✅ No se encontraron nombres 'Indeterminados'.`,
+    );
+    console.log(`${hr}\n`);
     return;
   }
 
   console.log(
-    `📦 Procesando ${statsIA.totalIndeterminados} nombres en lotes de ${BATCH_SIZE}...`,
+    `${dot} Análisis: Encontrados ${statsIA.totalIndeterminados} elementos.`,
   );
+  console.log(`${dot} Config: Lotes de ${BATCH_SIZE} unidades.`);
+  console.log(`${hr}`);
+  console.log(`  📥 PROCESANDO LOTE DE TRABAJO...`);
+  console.log(`${hr}\n`);
 
   // --- PROCESAMIENTO POR LOTES ---
   for (let i = startIndex; i < indicesIndeterminados.length; i += BATCH_SIZE) {
@@ -169,13 +193,27 @@ const corregirIndeterminados = async () => {
 
     const datosOllama = chunkIndices
       .map((idx) => todasLasFilas[idx])
-      .filter((row) => row.From !== 'Indeterminado');
+      .filter((row) => row.From !== '' || undefined); // Consideramos corregidos aquellos que ya no están vacíos
 
     const datosIndeterminados = chunkIndices
       .map((idx) => todasLasFilas[idx])
-      .filter((row) => row.From === 'Indeterminado');
+      .filter((row) => row.From === '' || undefined);
+
+    statsIA.lotesProcesados += 1;
+    statsIA.corregidosExitosamente += datosOllama.length;
+
+    const timestamp = new Date().toLocaleTimeString();
+    const reporteLog = `[${timestamp}] Lote #${statsIA.lotesProcesados} | Éxitos: ${datosOllama.length} | Indeterminados: ${datosIndeterminados.length}\n`;
+    // statsIA.fallidos se actualizaría en tu bloque `catch` si lo tienes
+
+    // --- 📝 LOG VISUAL DEL LOTE ---
+    console.log(`  ${reporteLog.trim()}`);
+    fs.appendFileSync(logPath, reporteLog, 'utf8');
 
     if (datosOllama.length > 0) {
+      console.log(
+        `  │  ├─ ✅ Guardando ${datosOllama.length} registros exitosos...`,
+      );
       await createCsvWriter({
         path: outputPath,
         header: headers,
@@ -183,11 +221,16 @@ const corregirIndeterminados = async () => {
       }).writeRecords(datosOllama);
     }
     if (datosIndeterminados.length > 0) {
+      console.log(
+        `  │  └─ ⚠️  Guardando ${datosIndeterminados.length} indeterminados...`,
+      );
       await createCsvWriter({
         path: indeterminadosPath,
         header: headers,
         append: true, // Append para no sobrescribir en cada lote
       }).writeRecords(datosIndeterminados);
+    } else {
+      console.log(`  │  └─ ⚠️  0 indeterminados en este lote.`);
     }
   }
 
